@@ -1,10 +1,13 @@
 const assert = require("node:assert/strict");
+const { createHash } = require("node:crypto");
 const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const zlib = require("node:zlib");
 const { buildCustom, detectAdapterModule, parseTarget } = require("../build-custom.js");
+
+const { verifyReleaseRendering } = require("./release-regressions.cjs");
 
 const PNG_SIGNATURE = "89504e470d0a1a0a";
 
@@ -92,9 +95,9 @@ const USAGE = [
   "  <module@version-or-ref>  Zebrash-compatible Go module to build and verify (required).",
   "                           Prefer an immutable version (vX.Y.Z or a pseudo-version).",
   "  --expect-fixes           Also assert EAN-8 (^B8), Code 128 subset C (>5) and",
-  "                           whitespace-tolerant ^GF rendering.",
+  "                           whitespace-tolerant ^GF, rotated FO/FB and PDF417 BY rendering.",
   "",
-  "Example: npm run test:custom -- github.com/<owner>/zebrash@v1.2.3",
+  "Example: npm run test:custom -- github.com/Gobbo89/zebrash@v1.41.0 --expect-fixes",
 ].join("\n");
 
 const SEMVER = /^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.+-]+)?$/;
@@ -127,9 +130,15 @@ async function main() {
   }
 
   const sourceFiles = ["zebrash/main.go", "zebrash/go.mod", "zebrash/go.sum", "src/wasm_exec.js"];
+  const stagedBefore = spawnSync("git", ["diff", "--cached", "--binary"], { cwd: root }).stdout;
   const before = sourceFiles.map((file) => fs.readFileSync(path.join(root, file)));
-  const assertSourceUnchanged = () => sourceFiles.forEach((file, index) =>
-    assert.deepEqual(fs.readFileSync(path.join(root, file)), before[index], file));
+  const assertSourceUnchanged = () => {
+    sourceFiles.forEach((file, index) =>
+      assert.deepEqual(fs.readFileSync(path.join(root, file)), before[index], file));
+    const staged = spawnSync("git", ["diff", "--cached", "--binary"], { cwd: root });
+    assert.equal(staged.status, 0, "git index inspection");
+    assert.deepEqual(staged.stdout, stagedBefore, "staged files");
+  };
 
   const adapterModule = detectAdapterModule(before[0].toString("utf8"));
   assert.equal(adapterModule, "github.com/ingridhq/zebrash");
@@ -146,6 +155,8 @@ async function main() {
     metadata = buildCustom(root, requested, { temporaryRoot });
     assert.equal(metadata.requested, requested);
     assert.equal(metadata.adapterModule, adapterModule);
+    assert.equal(metadata.wasmExecSha256, createHash("sha256").update(before[3]).digest("hex"));
+    assert.deepEqual(metadata.target, { GOOS: "js", GOARCH: "wasm", CGO_ENABLED: "0" });
     assert.equal(metadata.module.Path, target.modulePath);
     if (SEMVER.test(target.query)) {
       assert.equal(metadata.module.Version, target.query);
@@ -169,6 +180,8 @@ async function main() {
     fs.mkdirSync(path.join(fixture, "external"));
     const sentinel = path.join(fixture, "external", "custom-zebrash.wasm");
     fs.writeFileSync(sentinel, "previous successful build");
+    const metadataSentinel = path.join(fixture, "external", "custom-zebrash.json");
+    fs.writeFileSync(metadataSentinel, "previous metadata");
     const env = { ...process.env };
     for (const key of Object.keys(env)) if (key.toLowerCase() === "path") delete env[key];
     env.PATH = fixture;
@@ -179,12 +192,15 @@ async function main() {
     assert.equal(failure.status, 1, failure.stderr);
     assert.match(failure.stderr, /Custom WASM build failed/);
     assert.equal(fs.readFileSync(sentinel, "utf8"), "previous successful build");
+    assert.equal(fs.readFileSync(metadataSentinel, "utf8"), "previous metadata");
   } finally {
     fs.rmSync(fixture, { recursive: true, force: true });
   }
   assertSourceUnchanged();
 
   const external = require(externalEntry);
+  const defaultVersion = before[1].toString("utf8").match(/require\s+\S+\/zebrash\s+(v\S+)/)[1];
+  assert.equal(external.ZEBRASH_VERSION, defaultVersion, "bundled version describes default, not custom artifact");
   const wasmBytes = fs.readFileSync(path.join(root, "external", "custom-zebrash.wasm"));
   await external.init({ wasmBytes });
   const render = async (zpl, width = 80, height = 50, dpmm = 8) => {
@@ -207,8 +223,9 @@ async function main() {
   assert.equal(labels.length, 2);
   labels.forEach((base64) => assert.equal(Buffer.from(base64, "base64").subarray(0, 8).toString("hex"), PNG_SIGNATURE));
 
-  // Optional checks for engines that include the EAN-8 / Code 128 / ^GF fixes.
+  // Optional checks for engines that include the v1.41.0 fixes.
   if (expectFixes) {
+    await verifyReleaseRendering(render, readPng, darkBounds);
     const ean8 = darkBounds(await render("^XA^FO10,10^BY2^B8N,96,N,N^FD2001101^FS^XZ"));
     assert.equal(ean8.width, 134, "EAN-8 should contain 67 modules at BY2");
     const code128 = darkBounds(await render("^XA^FO10,10^BY3^BCN,100,N,N,N^FD>:ABC>512345678^FS^XZ", 100, 50, 8));
@@ -221,7 +238,7 @@ async function main() {
   console.log(
     "PASS: custom build, input rejection, cleanup, failure preservation, external loading, " +
     "text, graphics, multi-label rendering" +
-    (expectFixes ? ", EAN-8, Code 128 subset C and ^GF whitespace." : "."),
+    (expectFixes ? ", rotated FO/FB snapshots, PDF417 BY widths, EAN-8, Code 128 subset C and ^GF whitespace." : "."),
   );
 }
 
