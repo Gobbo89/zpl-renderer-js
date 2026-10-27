@@ -116,7 +116,8 @@ From a source checkout, you can build a compatible canonical Zebrash module at a
 > A custom build has direct access to `globalThis` on browser/node, please review the origin of the custom build before running/including it.
 
 ```bash
-npm run build:custom -- github.com/Gobbo89/zebrash@v1.40.0
+npm run build:custom -- github.com/Gobbo89/zebrash@v1.41.0
+npm run test:custom -- github.com/Gobbo89/zebrash@v1.41.0 --expect-v1.41-fixes
 ```
 
 The command builds in an isolated temporary module with `GOWORK=off` and writes `external/custom-zebrash.wasm` plus resolved module/compiler metadata in `external/custom-zebrash.json`. It accepts canonical `module@version-or-ref` inputs whose `go.mod` declares that same module identity and whose API is compatible with the current adapter. Local paths and forks that retain a different module identity are not supported.
@@ -135,6 +136,10 @@ const label = await zplToBase64Async("^XA^FO50,50^FDcustom engine^FS^XZ");
 ```
 
 `init()` also supports `wasmUrl` and `wasmModule`. The builder is a source-checkout tool and is not included in the published npm package. `ZEBRASH_VERSION` continues to identify the package's default bundled engine; inspect `custom-zebrash.json` to identify a custom artifact.
+
+`test:custom` runs core compatibility checks for any compatible engine. Add `--expect-fixes` for the EAN-8, Code 128 subset C and graphic-whitespace fixes available in v1.40.0. Add `--expect-v1.41-fixes` for the additional v1.41.0 checks; this also includes the v1.40.0 checks.
+
+The v1.41.0 checks compare all six rotated FO/FB raster goldens (R/I, spacing -10/0/+6, full/underfilled/single-line) and PDF417 module widths, alongside the earlier barcode and graphics regressions. The goldens preserve the printer-validated placement formula. PDF417 defaults to width 2 when BY is omitted, uses minimum 1 for explicit zero/negative widths, and preserves positive widths including 11. The BY0 minimum is intentional: the tested ZD230t instead produces no visible barcode.
 
 
 ## ZplApi
