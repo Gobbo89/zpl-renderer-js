@@ -99,7 +99,7 @@ const USAGE = [
   "  --expect-v1.41-fixes     Also assert rotated FO/FB and PDF417 BY rendering;",
   "                           includes --expect-fixes.",
   "",
-  "Example: npm run test:custom -- github.com/Gobbo89/zebrash@v1.41.0 --expect-v1.41-fixes",
+  "Example: npm run test:custom -- github.com/Gobbo89/zebrash@v1.41.1 --expect-v1.41-fixes",
 ].join("\n");
 
 const SEMVER = /^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.+-]+)?$/;

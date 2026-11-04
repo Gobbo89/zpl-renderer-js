@@ -116,8 +116,8 @@ From a source checkout, you can build a compatible canonical Zebrash module at a
 > A custom build has direct access to `globalThis` on browser/node, please review the origin of the custom build before running/including it.
 
 ```bash
-npm run build:custom -- github.com/Gobbo89/zebrash@v1.41.0
-npm run test:custom -- github.com/Gobbo89/zebrash@v1.41.0 --expect-v1.41-fixes
+npm run build:custom -- github.com/Gobbo89/zebrash@v1.41.1
+npm run test:custom -- github.com/Gobbo89/zebrash@v1.41.1 --expect-v1.41-fixes
 ```
 
 The command builds in an isolated temporary module with `GOWORK=off` and writes `external/custom-zebrash.wasm` plus resolved module/compiler metadata in `external/custom-zebrash.json`. It accepts canonical `module@version-or-ref` inputs whose `go.mod` declares that same module identity and whose API is compatible with the current adapter. Local paths and forks that retain a different module identity are not supported.
